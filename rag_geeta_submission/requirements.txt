@@ -1,0 +1,7 @@
+# Multilingual RAG Assistant — Requirements
+pymupdf>=1.23.0
+sentence-transformers>=2.6.0
+faiss-cpu>=1.7.4
+groq>=0.9.0
+numpy>=1.24.0
+rich>=13.0.0
