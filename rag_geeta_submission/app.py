@@ -253,6 +253,23 @@ col3.metric("📏 Avg Chunk Length", f"{stats['avg_chunk_len']} chars")
 
 
 # ── Source rendering helper ──────────────────────────────────────────────────
+def _deduplicate_lines(text: str, max_lines: int = 12) -> str:
+    """Remove consecutive duplicate lines from text (anti-hallucination cleanup)."""
+    lines = text.split('\n')
+    deduped = []
+    prev = None
+    for line in lines:
+        stripped = line.strip()
+        if stripped and stripped == prev:
+            continue  # skip consecutive duplicate
+        deduped.append(line)
+        prev = stripped
+    # Limit to max_lines
+    if len(deduped) > max_lines:
+        deduped = deduped[:max_lines] + ["…"]
+    return '\n'.join(deduped)
+
+
 def _render_sources(hits):
     """Render retrieved source passages as clean cards."""
     for i, s in enumerate(hits):
@@ -267,8 +284,9 @@ def _render_sources(hits):
             f'</div></div>',
             unsafe_allow_html=True,
         )
-        with st.expander(f"View raw passage #{i+1}", expanded=False):
-            st.text(s["text"][:400])
+        with st.expander(f"View passage #{i+1}", expanded=False):
+            cleaned = _deduplicate_lines(s["text"])
+            st.text(cleaned)
 
 
 # ── Session state ────────────────────────────────────────────────────────────

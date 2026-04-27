@@ -318,19 +318,23 @@ class RAGAssistant:
     SYSTEM_PROMPT = """You are a knowledgeable assistant specialising in the Bhagavad Gita
 and its Gujarati commentary (Yatharthgeeta by Swami Adgadanand).
 You have been given context passages extracted from the book (Chapters 1-10).
-The text is multilingual — Sanskrit shlokas + Gujarati explanations.
+The context text is primarily in Gujarati and Sanskrit, but you MUST respond in
+whatever language the user is writing in.
 
 Rules:
 1. Base your answer ONLY on the provided context.
-2. **IMPORTANT — Reply in the SAME language the user asked the question in.**
-   - If the user asks in Gujarati, reply entirely in Gujarati.
-   - If the user asks in Hindi, reply entirely in Hindi.
-   - If the user asks in Sanskrit, reply in Sanskrit.
-   - If the user asks in English, reply in English.
-   - For mixed-language questions, use the dominant language of the question.
-3. When quoting shlokas or passages from the context, keep them in the original script
-   and add a brief translation in the reply language if needed.
-4. Cite the chapter and verse number if available (e.g., "Chapter 1, Verse 4" or "અધ્યાય ૧, શ્લોક ૪").
+2. **CRITICAL RULE — You MUST reply in the SAME language as the user's question.**
+   - User writes in Hindi → You MUST reply ENTIRELY in Hindi (Devanagari script).
+   - User writes in Gujarati → You MUST reply ENTIRELY in Gujarati.
+   - User writes in English → You MUST reply ENTIRELY in English.
+   - User writes in Sanskrit → You MUST reply in Sanskrit.
+   - The context passages may be in a DIFFERENT language than the user's question.
+     That is fine — translate/interpret the context and reply in the USER's language.
+   - NEVER reply in a different language than the question, even if the context is
+     in another language.
+3. When quoting shlokas, keep them in original script and add a translation in the
+   user's language if needed.
+4. Cite the chapter and verse number if available.
 5. If the context is insufficient, say so honestly in the user's language.
 6. Keep answers concise but complete (3-6 sentences unless asked for more)."""
 
@@ -353,10 +357,34 @@ Rules:
             parts.append(f"{header}\n{h['text']}")
         return "\n\n---\n\n".join(parts)
 
+    @staticmethod
+    def _detect_language(text: str) -> str:
+        """Detect dominant script/language of a text string."""
+        # Count characters in different Unicode script ranges
+        devanagari = sum(1 for c in text if '\u0900' <= c <= '\u097F')  # Hindi/Sanskrit
+        gujarati   = sum(1 for c in text if '\u0A80' <= c <= '\u0AFF')  # Gujarati
+        latin      = sum(1 for c in text if 'A' <= c <= 'z')            # English
+        total = devanagari + gujarati + latin
+        if total == 0:
+            return "English"
+        if devanagari / max(total, 1) > 0.3:
+            return "Hindi"
+        if gujarati / max(total, 1) > 0.3:
+            return "Gujarati"
+        return "English"
+
     def ask(self, question: str, top_k: int = 5) -> Dict:
         t0   = time.time()
         hits = self.retrieve(question, top_k=top_k)
         ctx  = self._build_context_block(hits)
+
+        # Detect user's language for explicit instruction
+        user_lang = self._detect_language(question)
+        lang_instruction = (
+            f"\n\n⚠️ IMPORTANT: The user is writing in {user_lang}. "
+            f"You MUST reply ENTIRELY in {user_lang}. "
+            f"Do NOT reply in any other language."
+        )
 
         messages = [
             {"role": "system", "content": self.SYSTEM_PROMPT},
@@ -366,7 +394,7 @@ Rules:
         messages.append({
             "role"   : "user",
             "content": f"""Context passages from the book:
-\n{ctx}\n\nQuestion: {question}""",
+\n{ctx}\n\nQuestion: {question}{lang_instruction}""",
         })
 
         resp = self.client.chat.completions.create(
