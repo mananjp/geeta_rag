@@ -60,6 +60,15 @@ def extract_text_from_pdf(pdf_path: str) -> List[Dict]:
     Handles mixed Gujarati / Sanskrit / Devanagari / English content.
     Returns a list of {page, raw_text, clean_text}.
     """
+    import json
+    
+    # Check for pre-processed JSON cache (for legacy font decoding)
+    json_cache = Path(pdf_path).with_suffix('.json')
+    if json_cache.exists():
+        console.print(f"[cyan]Loading cleaned text from cache:[/cyan] {json_cache.name}")
+        with open(json_cache, 'r', encoding='utf-8') as f:
+            return json.load(f)
+            
     doc   = fitz.open(pdf_path)
     pages = []
 
